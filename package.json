@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "hubspot:setup": "tsx --env-file-if-exists=.env scripts/hubspot-setup.ts",
-    "simulate": "tsx --env-file-if-exists=.env scripts/simulate.ts"
+    "simulate": "tsx --env-file-if-exists=.env scripts/simulate.ts",
+    "check": "tsx --env-file-if-exists=.env scripts/check.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

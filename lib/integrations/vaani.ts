@@ -36,7 +36,9 @@ export async function getCallDetails(callId: string): Promise<VaaniCallDetails> 
   // Fallback: dedicated transcript endpoint.
   try {
     const t = await fetchJson<any>(`${base}/api/transcript/${encodeURIComponent(callId)}`, { headers: headers() });
-    return { transcript: t.transcript ?? null, summary: null, raw: t };
+    // This endpoint can answer HTTP 200 with {"transcript":"Error retrieving transcript","status_code":500,...}.
+    const ok = typeof t.transcript === "string" && (t.status_code === undefined || t.status_code === 200) && !t.error;
+    return { transcript: ok ? t.transcript : null, summary: null, raw: t };
   } catch (err) {
     if (err instanceof HttpError && err.status === 404) return { transcript: null, summary: null, raw: null };
     throw err;
@@ -51,6 +53,7 @@ export interface VaaniCallHistoryItem {
 
 /** Call-history is the only documented source of caller number, cost and start/end time. */
 export async function findInCallHistory(callId: string, maxPages = 5): Promise<VaaniCallHistoryItem | null> {
+  if (env.mockFails("vaani_history")) throw new Error("MOCK_FAIL: vaani_history");
   if (env.mock) {
     const row = await q1(`SELECT data FROM mock_vaani_calls WHERE call_id=$1`, [callId]);
     return row?.data?.history ?? null;

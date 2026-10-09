@@ -156,7 +156,20 @@ export async function processCall(callId: string): Promise<{ status: string; err
 
   // 1. Fetch transcript + call metadata from Vaani.
   const fetched = await step(callId, "vaani_fetch", async () => {
-    const [details, hist] = await Promise.all([getCallDetails(callId), findInCallHistory(callId)]);
+    // Neither lookup may block processing when the webhook already gave us the transcript:
+    // call-history has been seen failing server-side ("Invalid client_id format").
+    const warnings: string[] = [];
+    const [details, hist] = await Promise.all([
+      getCallDetails(callId).catch((err) => {
+        if (!claimed.transcript) throw err;
+        warnings.push(`call_details failed, used webhook transcript: ${String(err?.message ?? err).slice(0, 200)}`);
+        return { transcript: null, summary: null, raw: null };
+      }),
+      findInCallHistory(callId).catch((err) => {
+        warnings.push(`call-history failed (no caller number / credits / start time): ${String(err?.message ?? err).slice(0, 200)}`);
+        return null;
+      }),
+    ]);
     const start = parseVaaniTime(hist?.Start_time);
     const end = parseVaaniTime(hist?.End_time);
     let duration = claimed.duration_sec != null ? Number(claimed.duration_sec) : null;
@@ -171,7 +184,7 @@ export async function processCall(callId: string): Promise<{ status: string; err
       [callId, transcript, details.summary, normPhone(hist?.direction === "outbound" ? hist?.to_number : hist?.from_number) ?? null,
        startedAt, end, duration, hist?.call_cost ?? null, startedAt ? isAfterHours(startedAt) : null, hist ? JSON.stringify(hist) : null],
     );
-    return { has_history: !!hist };
+    return { has_history: !!hist, warnings };
   });
   if (!fetched.ok) fail("vaani_fetch");
 
