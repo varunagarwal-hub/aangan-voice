@@ -152,7 +152,7 @@ async function failSafe(tool: string, body: Record<string, unknown>, err: unknow
 }
 
 const NEXT_STEP: Record<string, string> = {
-  qualified: "offer_consultation_then_call_get_slots",
+  qualified: "offer_consultation_then_call_find_consultation_slots",
   needs_clarification: "ask_this_question_then_call_check_lead_again_with_the_answer",
   not_qualified: "close_call_politely",
   escalation: "close_call_politely",
@@ -267,7 +267,7 @@ export async function getSlots(body: Record<string, unknown>): Promise<ToolRespo
       await q(`UPDATE leads SET needs_callback=true, status='needs_callback', updated_at=now() WHERE id=$1`, [lead.id]);
       res = { result: "no_slots", say: "I couldn't find a free consultation slot right now. One of our designers will call you to fix a time that suits you.", lead_ref: lead.ref, next_step: "close_call_politely" };
     } else {
-      res = { result: "slots", say: slotsSay(options), lead_ref: lead.ref, next_step: "ask_caller_to_choose_then_collect_email_then_call_book_slot", options };
+      res = { result: "slots", say: slotsSay(options), lead_ref: lead.ref, next_step: "ask_caller_to_choose_then_collect_email_then_call_reserve_consultation", options };
     }
     await logEvent(lead.id, "get_slots", body, res);
     return res;
@@ -291,7 +291,7 @@ export async function bookSlot(body: Record<string, unknown>): Promise<ToolRespo
     }
     const email = typeof p.email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email) ? p.email.toLowerCase() : null;
     if (!email) {
-      const res = { result: "need_email", say: "Could you tell me your email address so we can send you the booking confirmation?", lead_ref: lead.ref, next_step: "collect_email_then_call_book_slot_again" };
+      const res = { result: "need_email", say: "Could you tell me your email address so we can send you the booking confirmation?", lead_ref: lead.ref, next_step: "collect_email_then_call_reserve_consultation_again" };
       await logEvent(lead.id, "book_slot", body, res);
       return res;
     }
@@ -301,7 +301,7 @@ export async function bookSlot(body: Record<string, unknown>): Promise<ToolRespo
     if (p.option !== undefined) start = offered.find((o) => o.option === Number(p.option))?.start;
     if (!start && typeof p.slot_start === "string" && !Number.isNaN(Date.parse(p.slot_start))) start = new Date(p.slot_start).toISOString();
     if (!start) {
-      const res = { result: "need_choice", say: offered.length ? slotsSay(offered, "Sorry, I didn't catch which time you'd like. ") : "Let me check the available times for you.", lead_ref: lead.ref, next_step: offered.length ? "ask_caller_to_choose_then_call_book_slot" : "call_get_slots", options: offered };
+      const res = { result: "need_choice", say: offered.length ? slotsSay(offered, "Sorry, I didn't catch which time you'd like. ") : "Let me check the available times for you.", lead_ref: lead.ref, next_step: offered.length ? "ask_caller_to_choose_then_call_reserve_consultation" : "call_find_consultation_slots", options: offered };
       await logEvent(lead.id, "book_slot", body, res);
       return res;
     }
@@ -327,7 +327,7 @@ export async function bookSlot(body: Record<string, unknown>): Promise<ToolRespo
         result: "confirm_needed",
         say: `Just to confirm — ${slotLabel(start)}, with the confirmation sent to ${email}. Shall I book it?`,
         lead_ref: lead.ref,
-        next_step: "if_caller_says_yes_call_book_slot_again_with_confirmed_true_otherwise_ask_what_to_change",
+        next_step: "if_caller_says_yes_call_reserve_consultation_again_with_confirmed_true_otherwise_ask_what_to_change",
       };
       await logEvent(lead.id, "book_slot", body, res);
       return res;
@@ -351,7 +351,7 @@ export async function bookSlot(body: Record<string, unknown>): Promise<ToolRespo
           await q(`UPDATE bookings SET status='failed', error=$2, updated_at=now() WHERE lead_id=$1`, [lead.id, err.message.slice(0, 500)]);
           const options = await offerSlots(lead);
           if (options?.length) {
-            const res = { result: "slot_unavailable", say: slotsSay(options, "I'm sorry, that time has just been taken. "), lead_ref: lead.ref, next_step: "ask_caller_to_choose_then_call_book_slot", options };
+            const res = { result: "slot_unavailable", say: slotsSay(options, "I'm sorry, that time has just been taken. "), lead_ref: lead.ref, next_step: "ask_caller_to_choose_then_call_reserve_consultation", options };
             await logEvent(lead.id, "book_slot", body, res, err.message);
             return res;
           }

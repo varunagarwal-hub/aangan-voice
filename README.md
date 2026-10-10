@@ -23,7 +23,7 @@ npm run dev
 
 `.env` already contains `MOCK_MODE=true`. Open http://localhost:3000 and sign in with the password `aangan` (the mock default, changed by `DASHBOARD_PASSWORD`).
 
-- Go to **Simulator**, then click **Run** on any September transcript, or run all of them. Each run goes through every real endpoint: check_lead → get_slots → book_slot (+ a deliberate retry) → webhook → post-call processing. Only Vaani, Cal.com, Telegram, HubSpot and Gemini are faked. What they would have received appears in the *mock outbox*.
+- Go to **Simulator**, then click **Run** on any September transcript, or run all of them. Each run goes through every real endpoint: check_lead → find_consultation_slots → reserve_consultation (+ a deliberate retry) → webhook → post-call processing. Only Vaani, Cal.com, Telegram, HubSpot and Gemini are faked. What they would have received appears in the *mock outbox*.
 - From a terminal while `npm run dev` is running (it exits non-zero if any outcome differs from the expected one):
 
 ```bash
@@ -74,7 +74,7 @@ Everything that decides is in two files, written only from `/knowledge`:
 
 - **Mid-call failure.** Every tool catches errors and replies normally with the fallback sentence. The lead is saved, or created if needed, as *needs callback*, and Telegram gets an alert with whatever details were captured.
 - **check_lead retries.** A retry updates the same lead. The lead is matched by `lead_ref`, then call ID, then caller phone (within 45 min), then name + location (within 20 min).
-- **book_slot retries.**
+- **reserve_consultation retries.**
   - There is one booking row per lead (`UNIQUE`). A confirmed booking is returned instead of booking again.
   - Cal.com has no idempotency key. If an earlier attempt may have reached Cal.com, we first search its bookings by attendee email and our `aangan_lead_ref` metadata.
   - If the slot was just taken, Vaani offers fresh slots.
@@ -122,7 +122,7 @@ These couldn't be confirmed from public docs:
 knowledge/            the source files (services, pricing, qualified, September enquiries)
 lib/knowledge.ts      facts from /knowledge
 lib/rules.ts          qualification + internal estimate (no AI)
-lib/tools.ts          check_lead / get_slots / book_slot
+lib/tools.ts          check_lead / find_consultation_slots / reserve_consultation
 lib/postcall.ts       webhook intake + post-call pipeline + cost
 lib/integrations/     vaani, calcom, telegram, hubspot, gemini (each with a mock)
 lib/schema.ts         Postgres schema

@@ -64,15 +64,15 @@ Email: ask ONLY when booking a consultation.
 TOOLS
 - check_lead: call it as soon as you have name, project type, location, timeline and requirements (or the caller is clearly
   out of scope, or is an existing client). Then say the "say" text exactly, and follow "next_step":
-  • offer_consultation_then_call_get_slots → if they agree, call get_slots.
+  • offer_consultation_then_call_find_consultation_slots → if they agree, call find_consultation_slots.
   • ask_this_question_then_call_check_lead_again_with_the_answer → ask the question in "say", then call check_lead again
     with lead_ref and the new answer only.
   • close_call_politely → say the text, thank them, and end the call. Don't argue or re-qualify.
-- get_slots: read out the options from "say". When the caller picks one, ask for their email address (spell it back to confirm).
-- book_slot — booking happens live, on this call, only after the caller says yes:
-  1. Call book_slot with lead_ref, the chosen option number, name and email (no "confirmed").
+- find_consultation_slots: read out the options from "say". When the caller picks one, ask for their email address (spell it back to confirm).
+- reserve_consultation — booking happens live, on this call, only after the caller says yes:
+  1. Call reserve_consultation with lead_ref, the chosen option number, name and email (no "confirmed").
      It returns result "confirm_needed" and a read-back of the exact time and email. Say it exactly and wait.
-  2. If the caller clearly says yes, call book_slot again with the same option and email plus confirmed=true.
+  2. If the caller clearly says yes, call reserve_consultation again with the same option and email plus confirmed=true.
      If they want a different time or email, change it and go back to step 1. Never send confirmed=true
      without having read back that exact time and email and heard a yes.
   3. Only when result is "booked" is the consultation booked. Say the "say" text exactly.
@@ -88,7 +88,7 @@ apologetic; never argue, never promise a specific person or time beyond what the
 
 NEVER
 - Never invent services, prices, discounts, timelines or availability.
-- Never promise a designer by name. Never confirm a booking unless book_slot returned result "booked".
+- Never promise a designer by name. Never confirm a booking unless reserve_consultation returned result "booked".
 - Never ask for card, bank, Aadhaar or any ID details.
 ```
 
@@ -101,7 +101,7 @@ All three: **Method** `POST`, **Content-Type** `application/json`, **Header** `x
 The tools always reply with HTTP 200 and a JSON body like:
 
 ```json
-{ "result": "qualified", "say": "Thank you, Priya — …", "lead_ref": "AG-7K3M9Q", "next_step": "offer_consultation_then_call_get_slots" }
+{ "result": "qualified", "say": "Thank you, Priya — …", "lead_ref": "AG-7K3M9Q", "next_step": "offer_consultation_then_call_find_consultation_slots" }
 ```
 
 ### Tool 1 — `check_lead`
@@ -143,7 +143,7 @@ The tools always reply with HTTP 200 and a JSON body like:
 }
 ```
 
-### Tool 2 — `get_slots`
+### Tool 2 — `find_consultation_slots`
 
 - **URL:** `https://YOUR-APP.vercel.app/api/tools/get-slots`
 - **Description:** Get up to 3 free designer consultation slots. Only after check_lead returned result "qualified" and the caller wants to book.
@@ -161,7 +161,7 @@ The tools always reply with HTTP 200 and a JSON body like:
 }
 ```
 
-### Tool 3 — `book_slot`
+### Tool 3 — `reserve_consultation`
 
 - **URL:** `https://YOUR-APP.vercel.app/api/tools/book-slot`
 - **Description:** Book the consultation slot the caller chose, during the call. First call (without confirmed) returns a read-back of the time and email for the caller to confirm; nothing is booked. Call again with confirmed=true only after the caller says yes. Never double-books.
@@ -173,11 +173,11 @@ The tools always reply with HTTP 200 and a JSON body like:
   "properties": {
     "lead_ref": { "type": "string", "description": "lead_ref from check_lead." },
     "call_id": { "type": "string" },
-    "option": { "type": "integer", "description": "Option number (1, 2 or 3) from get_slots." },
-    "slot_start": { "type": "string", "description": "Alternative to option: the slot start time exactly as returned by get_slots." },
+    "option": { "type": "integer", "description": "Option number (1, 2 or 3) from find_consultation_slots." },
+    "slot_start": { "type": "string", "description": "Alternative to option: the slot start time exactly as returned by find_consultation_slots." },
     "name": { "type": "string" },
     "email": { "type": "string", "description": "Caller's email, spelled back and confirmed." },
-    "confirmed": { "type": "boolean", "description": "true ONLY after you read back the exact time and email from the previous book_slot response and the caller said yes." }
+    "confirmed": { "type": "boolean", "description": "true ONLY after you read back the exact time and email from the previous reserve_consultation response and the caller said yes." }
   },
   "required": ["lead_ref", "email"]
 }
