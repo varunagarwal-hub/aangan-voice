@@ -210,6 +210,14 @@ export async function processCall(callId: string): Promise<{ status: string; err
   if (!linked.ok) { fail("link_lead"); return finish(callId, errors); }
   call = (await q1(`SELECT * FROM calls WHERE vaani_call_id=$1`, [callId]))!;
   let lead = (await q1(`SELECT * FROM leads WHERE id=$1`, [call.lead_id]))!;
+  // The call ended while Vaani was still asking a qualifying question: a person should call back.
+  if (lead.outcome === "needs_clarification" && !lead.needs_callback) {
+    lead = (await q1(
+      `UPDATE leads SET needs_callback=true, status='needs_callback',
+         human_review = human_review || $2::jsonb, updated_at=now() WHERE id=$1 RETURNING *`,
+      [lead.id, JSON.stringify(["Call ended before qualification was finished — call back to complete it."])],
+    ))!;
+  }
   const booking = await q1(`SELECT * FROM bookings WHERE lead_id=$1 AND status='confirmed'`, [lead.id]);
   const bookingLabel = booking ? slotLabel(new Date(booking.slot_start).toISOString()) : null;
 

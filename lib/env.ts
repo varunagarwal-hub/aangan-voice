@@ -58,6 +58,8 @@ export const env = {
   get geminiApiKey() { return e("GEMINI_API_KEY"); },
   get geminiModel() { return e("GEMINI_MODEL") ?? "gemini-3.8-flash"; },
   get geminiThinkingLevel() { return e("GEMINI_THINKING_LEVEL") ?? "low"; },
+  /** Used when the main model is overloaded (503/429) or times out. */
+  get geminiFallbackModel() { return e("GEMINI_FALLBACK_MODEL") ?? "gemini-3.5-flash-lite"; },
 
   // Cost inputs (see README "Cost per call")
   get vaaniInrPerCredit() { return num("VAANI_INR_PER_CREDIT"); },

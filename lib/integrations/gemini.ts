@@ -50,33 +50,45 @@ export async function writeBrief(input: {
     `Transcript:\n${input.transcript}`,
   ].join("\n\n");
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent`;
   const headers = { "x-goog-api-key": need(env.geminiApiKey, "GEMINI_API_KEY"), "Content-Type": "application/json" };
   const base = {
     systemInstruction: { parts: [{ text: SYSTEM }] },
     contents: [{ role: "user", parts: [{ text: user }] }],
   };
-  const thinking = env.geminiModel.includes("2.5")
-    ? { thinkingBudget: 0 }
-    : { thinkingLevel: env.geminiThinkingLevel };
+
+  async function callModel(model: string, timeoutMs: number) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const thinking = model.includes("2.5") ? { thinkingBudget: 0 }
+      : model.includes("lite") ? { thinkingLevel: "minimal" }
+      : { thinkingLevel: env.geminiThinkingLevel };
+    try {
+      return await fetchJson<any>(url, {
+        method: "POST", headers, timeoutMs,
+        body: JSON.stringify({ ...base, generationConfig: { responseMimeType: "application/json", responseJsonSchema: SCHEMA, thinkingConfig: thinking } }),
+      });
+    } catch (err) {
+      // The docs show two structured-output shapes; if this one is rejected, fall back to prompt-only JSON.
+      if (!(err instanceof HttpError) || err.status !== 400) throw err;
+      return fetchJson<any>(url, {
+        method: "POST", headers, timeoutMs,
+        body: JSON.stringify({
+          ...base,
+          contents: [{ role: "user", parts: [{ text: `${user}\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(SCHEMA)}` }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      });
+    }
+  }
 
   let res: any;
   try {
-    res = await fetchJson(url, {
-      method: "POST", headers, timeoutMs: 150000,
-      body: JSON.stringify({ ...base, generationConfig: { responseMimeType: "application/json", responseJsonSchema: SCHEMA, thinkingConfig: thinking } }),
-    });
+    res = await callModel(env.geminiModel, 100_000);
   } catch (err) {
-    // The docs show two structured-output shapes; if this one is rejected, fall back to prompt-only JSON.
-    if (!(err instanceof HttpError) || err.status !== 400) throw err;
-    res = await fetchJson(url, {
-      method: "POST", headers, timeoutMs: 150000,
-      body: JSON.stringify({
-        ...base,
-        contents: [{ role: "user", parts: [{ text: `${user}\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(SCHEMA)}` }] }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-    });
+    // Overloaded (503/429), server error or timeout: retry once on the lighter fallback model.
+    const retryable = err instanceof HttpError ? err.status === 429 || err.status >= 500 : /timeout|abort/i.test(String((err as Error)?.name ?? err));
+    if (!retryable || env.geminiFallbackModel === env.geminiModel) throw err;
+    console.warn(`[gemini] ${env.geminiModel} failed (${(err as Error).message?.slice(0, 120)}); retrying with ${env.geminiFallbackModel}`);
+    res = await callModel(env.geminiFallbackModel, 60_000);
   }
   const text: string = res.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? "";
   const parsed = JSON.parse(text.replace(/^```(json)?|```$/g, "").trim());
