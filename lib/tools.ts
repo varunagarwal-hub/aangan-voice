@@ -1,9 +1,11 @@
 /**
- * The three in-call tools Vaani calls: check_lead, get_slots, book_slot.
+ * The three in-call tools Vaani calls: check_lead, find_consultation_slots (/get-slots),
+ * reserve_consultation (/book-slot).
  * Every handler returns a small JSON object whose `say` field is the exact sentence for Vaani.
  * Any failure returns the fallback sentence ("a designer will call you back") and the lead is kept.
  */
 import { randomBytes } from "node:crypto";
+import { after } from "next/server";
 import { q, q1 } from "./db";
 import { env } from "./env";
 import { LeadInput, evaluateLead, FALLBACK_SAY, formatEstimate, type CriterionKey } from "./rules";
@@ -114,11 +116,18 @@ export async function resolveLead(p: Record<string, unknown>): Promise<Lead | un
   return undefined;
 }
 
+/** Run work after the HTTP response is sent so Vaani isn't kept waiting. Outside a request, just await it. */
+async function later(fn: () => Promise<unknown>) {
+  try { after(fn); } catch { await fn(); }
+}
+
 async function logEvent(leadId: string | null, tool: string, request: unknown, response: unknown, error?: string) {
-  try {
-    await q(`INSERT INTO tool_events (lead_id, tool, request, response, error) VALUES ($1,$2,$3,$4,$5)`,
-      [leadId, tool, JSON.stringify(request ?? null), JSON.stringify(response ?? null), error ?? null]);
-  } catch (err) { console.error("[tool_events] insert failed", err); }
+  await later(async () => {
+    try {
+      await q(`INSERT INTO tool_events (lead_id, tool, request, response, error) VALUES ($1,$2,$3,$4,$5)`,
+        [leadId, tool, JSON.stringify(request ?? null), JSON.stringify(response ?? null), error ?? null]);
+    } catch (err) { console.error("[tool_events] insert failed", err); }
+  });
 }
 
 /** Something failed mid-call: keep the lead, mark it for callback, alert the team, give Vaani the fallback line. */
@@ -142,10 +151,10 @@ async function failSafe(tool: string, body: Record<string, unknown>, err: unknow
   } catch (dbErr) {
     console.error(`[${tool}] could not save fallback lead`, dbErr);
   }
-  await alertSafe(
+  await later(() => alertSafe(
     `⚠️ <b>${esc(tool)} failed during a live call</b> — please call the customer back.\n` +
     `Ref: ${esc(ref ?? "-")}\nDetails received: <code>${esc(JSON.stringify(cleanParams(body)).slice(0, 1500))}</code>\nError: ${esc(msg.slice(0, 300))}`,
-  );
+  ));
   const res: ToolResponse = { result: "error", say: FALLBACK_SAY, lead_ref: ref, next_step: "close_call_politely" };
   await logEvent(lead?.id ?? null, tool, body, res, msg);
   return res;
@@ -202,10 +211,11 @@ export async function checkLead(body: Record<string, unknown>): Promise<ToolResp
     if (!lead) throw new Error("lead upsert returned no row");
 
     if (result.outcome === "escalation" && prevOutcome !== "escalation") {
-      await alertSafe(
-        `🔴 <b>URGENT — existing client on the phone</b> (${esc(lead.ref)})\nName: ${esc(input.name ?? "-")}\nPhone: ${esc(input.caller_phone ?? "see call log")}\n` +
+      const ref = lead.ref;
+      await later(() => alertSafe(
+        `🔴 <b>URGENT — existing client on the phone</b> (${esc(ref)})\nName: ${esc(input.name ?? "-")}\nPhone: ${esc(input.caller_phone ?? "see call log")}\n` +
         `Location: ${esc(input.location ?? "-")}\nIssue: ${esc(input.requirements ?? "-")}\nPlease have someone senior call back.`,
-      );
+      ));
     }
     const res: ToolResponse = { result: result.outcome, say: result.say, lead_ref: lead.ref, next_step: NEXT_STEP[result.outcome] };
     await logEvent(lead.id, "check_lead", body, { ...res, internal_estimate: formatEstimate(result.internal_estimate) });

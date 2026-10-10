@@ -63,14 +63,14 @@ export async function writeBrief(input: {
   let res: any;
   try {
     res = await fetchJson(url, {
-      method: "POST", headers, timeoutMs: 60000,
+      method: "POST", headers, timeoutMs: 150000,
       body: JSON.stringify({ ...base, generationConfig: { responseMimeType: "application/json", responseJsonSchema: SCHEMA, thinkingConfig: thinking } }),
     });
   } catch (err) {
     // The docs show two structured-output shapes; if this one is rejected, fall back to prompt-only JSON.
     if (!(err instanceof HttpError) || err.status !== 400) throw err;
     res = await fetchJson(url, {
-      method: "POST", headers, timeoutMs: 60000,
+      method: "POST", headers, timeoutMs: 150000,
       body: JSON.stringify({
         ...base,
         contents: [{ role: "user", parts: [{ text: `${user}\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(SCHEMA)}` }] }],

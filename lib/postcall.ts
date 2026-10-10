@@ -23,7 +23,8 @@ export async function recordWebhook(payload: any): Promise<string | null> {
   const d = payload.data ?? {};
   const callId: string | undefined = payload.call_id ?? d.call_id;
   if (!callId) throw new Error("call_postprocessing without call_id");
-  const durationSec = typeof d.call_duration === "number" ? d.call_duration / 1000 : null; // ms per docs
+  // Docs say milliseconds, but live webhooks send seconds (e.g. 184.85 for a ~3-minute call).
+  const durationSec = typeof d.call_duration === "number" ? d.call_duration : null;
   await q(
     `INSERT INTO calls (vaani_call_id, transcript, vaani_summary, recording_url, duration_sec, end_reason, raw_webhook)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -105,6 +106,11 @@ export function computeCost(c: { duration_sec?: number | null; vaani_credits?: n
   return { vaani: r2(vaani), telephony: r2(telephony), gemini: r2(gemini), total: r2(total), complete: missing.length === 0, missing };
 }
 
+/** True if the transcript has at least one caller turn ("USER:"). */
+export function callerSpoke(transcript?: string | null): boolean {
+  return /(^|\n)\s*(\[[\d:]+\]\s*)?USER:\s*\S/i.test(transcript ?? "");
+}
+
 /** Link a finished call to the lead created by the in-call tools. */
 async function linkLead(call: Row): Promise<{ leadId: string; method: string }> {
   if (call.lead_id) return { leadId: call.lead_id, method: call.link_method ?? "existing" };
@@ -123,7 +129,16 @@ async function linkLead(call: Row): Promise<{ leadId: string; method: string }> 
     const cands = await q(`SELECT id FROM leads WHERE vaani_call_id IS NULL AND created_at BETWEEN $1 AND $2`, [winFrom, winTo]);
     if (cands.length === 1) { lead = cands[0]; method = "time_window_unique"; }
   }
-  if (!lead) {
+  if (!lead && !callerSpoke(call.transcript)) {
+    // Silent / dropped call (e.g. Vaani hung up for inactivity): log it, but nobody needs to call back.
+    lead = await q1(
+      `INSERT INTO leads (ref, vaani_call_id, caller_phone, outcome, status, needs_callback)
+       VALUES ($1,$2,$3,'no_conversation','closed',false)
+       ON CONFLICT (vaani_call_id) DO UPDATE SET updated_at=now() RETURNING id`,
+      [newRef(), call.vaani_call_id, call.from_number ?? null],
+    );
+    method = "created_no_conversation";
+  } else if (!lead) {
     // Caller hung up before check_lead, or we couldn't match. Still log the call as a lead.
     lead = await q1(
       `INSERT INTO leads (ref, vaani_call_id, caller_phone, outcome, status, needs_callback, human_review)
@@ -230,7 +245,7 @@ export async function processCall(callId: string): Promise<{ status: string; err
   // 6. HubSpot — every call.
   const hs = await step(callId, "hubspot", async () => {
     const input = lead.raw_input ?? {};
-    const stage = booking ? "booked" : lead.outcome === "qualified" ? "qualified" : lead.outcome === "not_qualified" ? "not_qualified" : "other";
+    const stage = booking ? "booked" : lead.outcome === "qualified" ? "qualified" : lead.outcome === "not_qualified" || lead.outcome === "no_conversation" ? "not_qualified" : "other";
     const key = lead.caller_phone ?? lead.email ?? `call:${callId}`;
     return syncToHubspot({
       callId,
@@ -243,7 +258,7 @@ export async function processCall(callId: string): Promise<{ status: string; err
           aangan_after_hours: call.after_hours, aangan_consultation_at: bookingLabel,
           aangan_call_cost_inr: call.cost_total_inr, aangan_cost_vaani_inr: call.cost_vaani_inr,
           aangan_cost_telephony_inr: call.cost_telephony_inr, aangan_cost_gemini_inr: call.cost_gemini_inr,
-          aangan_internal_estimate: formatEstimate(lead.internal_estimate), aangan_summary: lead.summary,
+          aangan_internal_estimate: formatEstimate(lead.internal_estimate), aangan_summary: lead.summary ?? call.vaani_summary,
           aangan_designer_brief: lead.designer_brief, aangan_dashboard_url: `${env.appUrl}/leads/${lead.id}`,
         },
       },
@@ -276,7 +291,8 @@ export function telegramMessage(lead: Row, call: Row, bookingLabel: string | nul
     `<b>Consultation:</b> ${bookingLabel ? esc(bookingLabel) : "❗ not booked — please call to schedule"}`,
     lead.priority_score ? `<b>Priority:</b> ${lead.priority_score}/5 — ${esc(lead.priority_reason ?? "")}` : "",
     "",
-    lead.summary ? `<b>Summary</b>\n${esc(lead.summary)}` : "",
+    lead.summary ? `<b>Summary</b>\n${esc(lead.summary)}`
+      : call.vaani_summary ? `<b>Summary</b> <i>(Vaani)</i>\n${esc(call.vaani_summary)}` : "",
     briefMissing ? "<i>AI brief unavailable — see transcript in the dashboard.</i>" : lead.designer_brief ? `<b>Designer brief</b>\n<pre>${esc(lead.designer_brief)}</pre>` : "",
     `<b>Internal estimate — never quote to client</b>\n${esc(formatEstimate(lead.internal_estimate))}`,
     (lead.handoff_notes ?? []).length ? `<b>Notes</b>\n• ${(lead.handoff_notes as string[]).map(esc).join("\n• ")}` : "",

@@ -17,6 +17,10 @@ export function toolRoute(handler: (body: Record<string, unknown>) => Promise<To
     } catch {
       return NextResponse.json({ result: "error", say: FALLBACK_SAY, next_step: "close_call_politely" });
     }
-    return NextResponse.json(await handler(body));
+    const t0 = Date.now();
+    const res = await handler(body);
+    // Latency per tool call, visible in Vercel logs ("vercel logs").
+    console.log(`[tool] ${new URL(req.url).pathname} result=${res.result} ${Date.now() - t0}ms`);
+    return NextResponse.json(res);
   };
 }

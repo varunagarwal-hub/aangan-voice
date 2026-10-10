@@ -4,7 +4,8 @@ import { processCall, recordWebhook } from "@/lib/postcall";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Gemini can take a minute or more; processing runs after the 2xx is sent.
+export const maxDuration = 300;
 
 /** Vaani → Settings → Webhooks. We store the event fast (Vaani wants a 2xx within 5 s) and process after responding. */
 export async function POST(req: Request) {

@@ -72,7 +72,7 @@ export async function runFixture(f: Fixture, origin: string, opts: { startedAt?:
     } }),
   ]);
   const webhook = { event: "call_postprocessing", call_id: callId, timestamp: new Date(started.getTime() + durationMs).toISOString(),
-    data: { call_id: callId, call_duration: durationMs, end_reason: "user_hangup", transcript, summary: null, recording_url: null } };
+    data: { call_id: callId, call_duration: durationMs / 1000, end_reason: "user_hangup", transcript, summary: null, recording_url: null } };
   const wh = await fetch(`${origin}/api/vaani/webhook${env.webhookSecret ? `?token=${encodeURIComponent(env.webhookSecret)}` : ""}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(webhook),
   });

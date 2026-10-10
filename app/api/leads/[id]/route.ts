@@ -4,7 +4,7 @@ import { q, q1 } from "@/lib/db";
 import { processCall } from "@/lib/postcall";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 const STATUSES = ["new", "contacted", "consultation_booked", "needs_callback", "closed"];
 
 /** Dashboard actions: change status, or re-run failed post-call steps. */

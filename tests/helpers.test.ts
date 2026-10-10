@@ -43,3 +43,13 @@ describe("after-hours (Mon–Fri 10:00–19:00 IST)", () => {
     expect(isAfterHours(new Date("2026-10-10T06:00:00Z"))).toBe(true);  // Sat
   });
 });
+
+describe("silent calls", () => {
+  it("detects whether the caller spoke (Vaani transcript format)", async () => {
+    const { callerSpoke } = await import("@/lib/postcall");
+    expect(callerSpoke("[10:16:49] AGENT: Hello?\n\n[10:17:08] AGENT: Hanging up due to inactivity,")).toBe(false);
+    expect(callerSpoke("[10:20:01] AGENT: Hello\n\n[10:20:05] USER: Hi, I'm Raghav")).toBe(true);
+    expect(callerSpoke("AGENT: Hi\n\nUSER: hello")).toBe(true);
+    expect(callerSpoke(null)).toBe(false);
+  });
+});
