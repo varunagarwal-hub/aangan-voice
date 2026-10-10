@@ -7,6 +7,10 @@ describe("tool input cleaning", () => {
   it("drops LLM placeholders and coerces booleans", () => {
     expect(cleanParams({ a: "", b: "null", c: "N/A", d: "true", e: "Baner", f: 5 })).toEqual({ d: true, e: "Baner", f: 5 });
   });
+  it("normalises free-text enum and yes/no values (Vaani form has no dropdowns)", () => {
+    expect(cleanParams({ project_category: "Residential", scope: "Full Home", decision_maker: "Authorised-On-Behalf", confirmed: "Yes", budget_volunteered: "no", location: "Koregaon Park" }))
+      .toEqual({ project_category: "residential", scope: "full_home", decision_maker: "authorised_on_behalf", confirmed: true, budget_volunteered: false, location: "Koregaon Park" });
+  });
   it("normalises Indian phone numbers", () => {
     expect(normPhone("98230 12345")).toBe("+919823012345");
     expect(normPhone("+91 98230-12345")).toBe("+919823012345");

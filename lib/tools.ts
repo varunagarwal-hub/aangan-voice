@@ -39,11 +39,20 @@ export function cleanParams(body: Record<string, unknown>) {
       const t = v.trim();
       if (!t || ["null", "none", "n/a", "na", "undefined"].includes(t.toLowerCase())) continue;
       if (t === "true" || t === "false") { out[k] = t === "true"; continue; }
-      out[k] = t;
+      if (BOOLEAN_FIELDS.has(k) && /^(yes|y|true|1)$/i.test(t)) { out[k] = true; continue; }
+      if (BOOLEAN_FIELDS.has(k) && /^(no|n|false|0)$/i.test(t)) { out[k] = false; continue; }
+      // Vaani's tool form has no enum dropdowns: accept "Residential", "full home", "Full-Home" etc.
+      out[k] = ENUM_FIELDS.has(k) ? t.toLowerCase().replace(/[\s-]+/g, "_") : t;
     } else out[k] = v;
   }
   return out;
 }
+
+const ENUM_FIELDS = new Set([
+  "enquiry_type", "project_category", "scope", "location_confirmed_pune_pcmc", "service_wanted",
+  "structural_changes_required", "is_rented", "decision_maker",
+]);
+const BOOLEAN_FIELDS = new Set(["budget_volunteered", "no_fixed_deadline", "asked_about_price", "confirmed"]);
 
 export function normPhone(p?: unknown): string | undefined {
   if (typeof p !== "string") return undefined;
