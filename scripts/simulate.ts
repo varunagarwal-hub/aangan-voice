@@ -14,6 +14,8 @@ const id = process.argv[2] ?? "all";
     if (!ok) bad++;
     const post = r.steps.find((s: any) => s.tool === "post-call processing")?.response;
     const book = r.steps.filter((s: any) => s.tool.startsWith("book_slot")).map((s: any) => s.response.result).join(" → ");
+    // Booking must go: read-back (nothing booked) → booked → retry returns the same booking.
+    if (book && book !== "confirm_needed → booked → booked" && !book.startsWith("confirm_needed → slot_unavailable")) bad++;
     console.log(`${ok ? "✓" : "✗"} ${r.fixture.padEnd(4)} expected=${r.expected.padEnd(14)} actual=${String(r.actual).padEnd(14)} post-call=${post?.status}${post?.errors?.length ? ` (${post.errors})` : ""}${book ? `  booking: ${book}` : ""}`);
   }
   console.log(`\n${results.length - bad}/${results.length} matched. Dashboard: ${base}`);

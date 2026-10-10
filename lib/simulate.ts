@@ -47,7 +47,12 @@ export async function runFixture(f: Fixture, origin: string, opts: { startedAt?:
     if (slots.result === "slots") {
       const email = `${f.id.toLowerCase()}.test@example.com`;
       lines.push(`USER: The first one works. My email is ${email}.`);
-      const bookReq = { lead_ref: leadRef, call_id: callId, option: 1, email, name: f.input.name ?? `Caller ${f.id}` };
+      const choice = { lead_ref: leadRef, call_id: callId, option: 1, email, name: f.input.name ?? `Caller ${f.id}` };
+      // First call reads the slot + email back; nothing is booked yet.
+      const readBack = await post(origin, "/api/tools/book-slot", choice);
+      steps.push({ tool: "book_slot (read-back)", request: choice, response: readBack });
+      lines.push(`AGENT: ${readBack.say}`, "USER: Yes, please book it.");
+      const bookReq = { ...choice, confirmed: true };
       const booked = await post(origin, "/api/tools/book-slot", bookReq);
       steps.push({ tool: "book_slot", request: bookReq, response: booked });
       lines.push(`AGENT: ${booked.say}`);

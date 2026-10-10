@@ -69,8 +69,14 @@ TOOLS
     with lead_ref and the new answer only.
   • close_call_politely → say the text, thank them, and end the call. Don't argue or re-qualify.
 - get_slots: read out the options from "say". When the caller picks one, ask for their email address (spell it back to confirm).
-- book_slot: send lead_ref, the chosen option number, name and email. Say the "say" text exactly.
-  If result is need_email or need_choice or slot_unavailable, do what "say" asks and call book_slot again.
+- book_slot — booking happens live, on this call, only after the caller says yes:
+  1. Call book_slot with lead_ref, the chosen option number, name and email (no "confirmed").
+     It returns result "confirm_needed" and a read-back of the exact time and email. Say it exactly and wait.
+  2. If the caller clearly says yes, call book_slot again with the same option and email plus confirmed=true.
+     If they want a different time or email, change it and go back to step 1. Never send confirmed=true
+     without having read back that exact time and email and heard a yes.
+  3. Only when result is "booked" is the consultation booked. Say the "say" text exactly.
+  If result is need_email, need_choice or slot_unavailable, do what "say" asks and continue from step 1.
 - ALWAYS send lead_ref (from the first check_lead response) in every later tool call.
 - If a tool returns an error, does not respond, or "result" is "error": say "I'm sorry, I'm having a little trouble with our
   system right now. I've noted your details, and one of our designers will call you back." and close politely.
@@ -158,7 +164,7 @@ The tools always reply with HTTP 200 and a JSON body like:
 ### Tool 3 — `book_slot`
 
 - **URL:** `https://YOUR-APP.vercel.app/api/tools/book-slot`
-- **Description:** Book the consultation slot the caller chose. Needs their email. Safe to call again if unsure — it never double-books.
+- **Description:** Book the consultation slot the caller chose, during the call. First call (without confirmed) returns a read-back of the time and email for the caller to confirm; nothing is booked. Call again with confirmed=true only after the caller says yes. Never double-books.
 - **Parameters:**
 
 ```json
@@ -170,7 +176,8 @@ The tools always reply with HTTP 200 and a JSON body like:
     "option": { "type": "integer", "description": "Option number (1, 2 or 3) from get_slots." },
     "slot_start": { "type": "string", "description": "Alternative to option: the slot start time exactly as returned by get_slots." },
     "name": { "type": "string" },
-    "email": { "type": "string", "description": "Caller's email, spelled back and confirmed." }
+    "email": { "type": "string", "description": "Caller's email, spelled back and confirmed." },
+    "confirmed": { "type": "boolean", "description": "true ONLY after you read back the exact time and email from the previous book_slot response and the caller said yes." }
   },
   "required": ["lead_ref", "email"]
 }
@@ -180,7 +187,7 @@ The tools always reply with HTTP 200 and a JSON body like:
 
 ## 4. Test with cURL
 
-Run these in order (copy the `lead_ref` from the first reply into the next two). In mock mode use `http://localhost:3000`
+Run these in order (copy the `lead_ref` from the first reply into the next ones). The first book-slot call only reads the slot back; the second, with `"confirmed":true`, books it. In mock mode use `http://localhost:3000`
 (no secret needed unless you set `TOOL_SECRET`).
 
 ```bash
@@ -193,6 +200,10 @@ curl -s -X POST "https://YOUR-APP.vercel.app/api/tools/get-slots" -H "Content-Ty
 
 ```bash
 curl -s -X POST "https://YOUR-APP.vercel.app/api/tools/book-slot" -H "Content-Type: application/json" -H "x-tool-secret: YOUR_TOOL_SECRET" -d '{"lead_ref":"AG-XXXXXX","option":1,"name":"Priya","email":"priya@example.com"}'
+```
+
+```bash
+curl -s -X POST "https://YOUR-APP.vercel.app/api/tools/book-slot" -H "Content-Type: application/json" -H "x-tool-secret: YOUR_TOOL_SECRET" -d '{"lead_ref":"AG-XXXXXX","option":1,"name":"Priya","email":"priya@example.com","confirmed":true}'
 ```
 
 Simulate the end-of-call webhook (mock mode — in live mode Vaani sends this itself):

@@ -308,6 +308,22 @@ export async function bookSlot(body: Record<string, unknown>): Promise<ToolRespo
       await logEvent(lead.id, "book_slot", body, res);
       return res;
     }
+
+    // Nothing is booked until the caller has said yes to this exact slot and email.
+    const pending = lead.pending_confirmation as { start: string; email: string } | null;
+    const matchesReadBack = pending?.start === start && pending?.email === email;
+    if (p.confirmed !== true || !matchesReadBack) {
+      await q(`UPDATE leads SET pending_confirmation=$2, updated_at=now() WHERE id=$1`, [lead.id, JSON.stringify({ start, email })]);
+      const res = {
+        result: "confirm_needed",
+        say: `Just to confirm — ${slotLabel(start)}, with the confirmation sent to ${email}. Shall I book it?`,
+        lead_ref: lead.ref,
+        next_step: "if_caller_says_yes_call_book_slot_again_with_confirmed_true_otherwise_ask_what_to_change",
+      };
+      await logEvent(lead.id, "book_slot", body, res);
+      return res;
+    }
+
     await q(
       `INSERT INTO bookings (lead_id, slot_start, attendee_name, attendee_email, status) VALUES ($1,$2,$3,$4,'pending')
        ON CONFLICT (lead_id) DO UPDATE SET slot_start=EXCLUDED.slot_start, attendee_name=EXCLUDED.attendee_name,

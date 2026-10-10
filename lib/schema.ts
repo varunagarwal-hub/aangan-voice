@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS leads (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+-- Slot + email read back to the caller; book_slot only books when confirmed matches this.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS pending_confirmation jsonb;
 CREATE INDEX IF NOT EXISTS leads_phone_idx ON leads (caller_phone, updated_at);
 CREATE INDEX IF NOT EXISTS leads_created_idx ON leads (created_at);
 
