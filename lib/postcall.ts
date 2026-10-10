@@ -232,6 +232,8 @@ export async function processCall(callId: string): Promise<{ status: string; err
   const cost = computeCost({ duration_sec: call.duration_sec, vaani_credits: call.vaani_credits, usage: call.gemini_tokens });
   await q(`UPDATE calls SET cost_vaani_inr=$2, cost_telephony_inr=$3, cost_gemini_inr=$4, cost_total_inr=$5, cost_complete=$6, updated_at=now() WHERE vaani_call_id=$1`,
     [callId, cost.vaani, cost.telephony, cost.gemini, cost.total, cost.complete]);
+  // Re-read both so Telegram and HubSpot see the brief and the cost just saved.
+  call = (await q1(`SELECT * FROM calls WHERE vaani_call_id=$1`, [callId]))!;
   lead = (await q1(`SELECT * FROM leads WHERE id=$1`, [lead.id]))!;
 
   // 5. Telegram — qualified leads, plus anything a human must act on (escalation / callback).
